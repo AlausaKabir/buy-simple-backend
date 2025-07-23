@@ -8,7 +8,7 @@ export class ConstantsService {
   // Application Settings
   NODE_ENV = this.config.get('NODE_ENV');
   PORT = parseInt(this.config.get('PORT')) || 3000;
-  APP_NAME = this.config.get('APP_NAME') || 'Loan Management API';
+  APP_NAME = this.config.get('APP_NAME');
 
   // JWT Configuration
   JWT_SECRET =

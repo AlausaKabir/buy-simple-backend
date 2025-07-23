@@ -1,11 +1,15 @@
-import { Injectable, UnauthorizedException, OnModuleInit } from '@nestjs/common';
+import {
+  Injectable,
+  UnauthorizedException,
+  OnModuleInit,
+} from '@nestjs/common';
 import { JwtService } from '@nestjs/jwt';
-import { ConfigService } from '@nestjs/config';
 import * as bcrypt from 'bcryptjs';
 import * as fs from 'fs/promises';
 import * as path from 'path';
-import { AuthResponse, JwtPayload, User } from 'src/common/interfaces';
-import { LoginDto } from 'src/common/dto';
+import { AuthResponse, JwtPayload, User } from '../../common/interfaces';
+import { LoginDto } from '../../common/dto';
+import { ConstantsService } from '../../config/constant.service';
 
 @Injectable()
 export class AuthService implements OnModuleInit {
@@ -14,7 +18,7 @@ export class AuthService implements OnModuleInit {
 
   constructor(
     private jwtService: JwtService,
-    private configService: ConfigService,
+    private constants: ConstantsService,
   ) {}
 
   async onModuleInit() {
@@ -23,16 +27,19 @@ export class AuthService implements OnModuleInit {
 
   private async loadAndHashUsers(): Promise<void> {
     try {
-      const dataPath = path.join(process.cwd(), 'data', 'staff.json');
+      const dataPath = path.join(process.cwd(), 'src', 'data', 'staffs.json');
       const data = await fs.readFile(dataPath, 'utf8');
       const rawUsers = JSON.parse(data);
-      
+
       // Hash passwords on first load (simulate what would happen in real DB)
       this.users = await Promise.all(
         rawUsers.map(async (user: any) => ({
           ...user,
-          password: await bcrypt.hash(user.password, 12), // High salt rounds for security
-        }))
+          password: await bcrypt.hash(
+            user.password,
+            this.constants.BCRYPT_SALT_ROUNDS,
+          ),
+        })),
       );
     } catch (error) {
       console.error('Error loading users:', error);
@@ -41,23 +48,26 @@ export class AuthService implements OnModuleInit {
   }
 
   async validateUser(email: string): Promise<Omit<User, 'password'> | null> {
-    const user = this.users.find(user => user.email === email);
+    const user = this.users.find((user) => user.email === email);
     if (!user) return null;
-    
+
     // Return user without password
     const { password, ...userWithoutPassword } = user;
     return userWithoutPassword;
   }
 
   async login(loginDto: LoginDto): Promise<AuthResponse> {
-    const user = this.users.find(u => u.email === loginDto.email);
-    
+    const user = this.users.find((u) => u.email === loginDto.email);
+
     if (!user) {
       throw new UnauthorizedException('Invalid credentials');
     }
 
     // Use bcrypt for password comparison
-    const isPasswordValid = await bcrypt.compare(loginDto.password, user.password);
+    const isPasswordValid = await bcrypt.compare(
+      loginDto.password,
+      user.password,
+    );
     if (!isPasswordValid) {
       throw new UnauthorizedException('Invalid credentials');
     }
@@ -69,7 +79,7 @@ export class AuthService implements OnModuleInit {
     };
 
     const accessToken = this.jwtService.sign(payload, {
-      expiresIn: this.configService.get('JWT_EXPIRES_IN', '1h'),
+      expiresIn: this.constants.JWT_EXPIRES_IN,
     });
 
     return {
@@ -86,7 +96,7 @@ export class AuthService implements OnModuleInit {
   async logout(token: string): Promise<{ message: string }> {
     // Add token to blacklist
     this.blacklistedTokens.add(token);
-    
+
     // In production, you'd store this in Redis with TTL
     // Redis would automatically expire tokens based on JWT expiration
     return { message: 'Logged out successfully' };
